@@ -10,12 +10,14 @@ export async function POST(req: Request) {
   const file = formData.get('file') as File;
 
   if (!file) {
+    console.error('❌ 파일 없음');
     return NextResponse.json({ error: '파일이 없습니다.' }, { status: 400 });
   }
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const filename = `audio/${randomUUID()}-${file.name}`;
+  console.log('📁 업로드 파일 이름:', filename);
 
   // Supabase Storage에 업로드
   const { data: uploadData, error: uploadError } = await supabase.storage
@@ -25,32 +27,17 @@ export async function POST(req: Request) {
     });
 
   if (uploadError) {
-    return NextResponse.json({ error: '파일 업로드 실패' }, { status: 500 });
+    console.error('❌ 업로드 실패:', uploadError);
+    return NextResponse.json({ error: '파일 업로드 실패', detail: uploadError.message }, { status: 500 });
   }
+
+  console.log('✅ 업로드 성공:', uploadData);
 
   const audioUrl = supabase.storage.from('audio').getPublicUrl(filename).data.publicUrl;
+  console.log('🔗 공개 URL:', audioUrl);
 
-  // Whisper API 호출
-  const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY!}`,
-    },
-    body: (() => {
-      const form = new FormData();
-      form.append('file', new Blob([buffer], { type: file.type }), file.name);
-      form.append('model', 'whisper-1');
-      return form;
-    })(),
-  });
-
-  if (!whisperRes.ok) {
-    const error = await whisperRes.text();
-    console.error('Whisper API 오류:', error);
-    return NextResponse.json({ error: 'Whisper API 실패', detail: error }, { status: 500 });
-  }
-
-  const { text: transcript } = await whisperRes.json();
+  // Whisper 없이 저장
+  const transcript = '🧪 Whisper 없이 저장된 테스트 회의록입니다.';
 
   const { data: inserted, error: dbError } = await supabase
     .from('meeting_notes')
@@ -59,8 +46,11 @@ export async function POST(req: Request) {
     .single();
 
   if (dbError) {
-    return NextResponse.json({ error: 'DB 저장 실패' }, { status: 500 });
+    console.error('❌ DB 저장 실패:', dbError);
+    return NextResponse.json({ error: 'DB 저장 실패', detail: dbError.message }, { status: 500 });
   }
+
+  console.log('📝 저장 완료:', inserted);
 
   return NextResponse.json({ id: inserted.id });
 }
